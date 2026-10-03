@@ -19,6 +19,16 @@ const FLY_MS = 1600;
 const EMPTY: object[] = [];
 const WORLD_LABELS = [{ lat: BD_CENTER.lat, lng: BD_CENTER.lng, text: "Bangladesh" }];
 const WORLD_RINGS = [{ lat: BD_CENTER.lat, lng: BD_CENTER.lng }];
+const DIVISION_CENTRES = new Set([
+  "barishal",
+  "chattogram",
+  "dhaka",
+  "khulna",
+  "mymensingh",
+  "rajshahi",
+  "rangpur",
+  "sylhet",
+]);
 const sideColor = () => "rgba(124, 111, 240, 0.72)";
 const strokeColor = () => "rgba(124, 111, 240, 0.98)";
 const ringColorFn = () => (t: number) => `rgba(124, 111, 240, ${Math.max(0, 0.92 - t)})`;
@@ -175,10 +185,11 @@ export default function GlobeExplorer({
     (value: number) => 0.018 + 0.19 * normalize(value, hexBounds.min, hexBounds.max),
     [hexBounds],
   );
-  // Anchor each district name on top of the pillar nearest to it, so names sit with their pillar.
+  // Keep one district name per pillar, then retain a geographically distributed subset.
+  // Every pillar remains identifiable through its hover label; this prevents unreadable name piles.
   const districtLabels = useMemo(() => {
     if (!gridPoints.length) return [];
-    return districts.flatMap((d) => {
+    const candidates = districts.flatMap((d) => {
       let best = gridPoints[0]!;
       let bestDist = Infinity;
       for (const p of gridPoints) {
@@ -186,9 +197,44 @@ export default function GlobeExplorer({
         if (dist < bestDist) { bestDist = dist; best = p; }
       }
       if (bestDist > 0.36) return [];
-      return [{ lat: best.lat, lng: best.lng, text: lang === "bn" ? d.bn : d.name, alt: pillarHeight(best.value) + 0.006 }];
+      return [{
+        districtId: d.id,
+        districtLat: d.lat,
+        districtLng: d.lon,
+        lat: best.lat,
+        lng: best.lng,
+        text: lang === "bn" ? d.bn : d.name,
+        alt: pillarHeight(best.value) + 0.008,
+        value: best.value,
+        distance: bestDist,
+      }];
     });
-  }, [lang, gridPoints, pillarHeight]);
+
+    const nearestPerPillar = new Map<string, (typeof candidates)[number]>();
+    for (const candidate of candidates) {
+      const key = `${candidate.lat.toFixed(4)},${candidate.lng.toFixed(4)}`;
+      const current = nearestPerPillar.get(key);
+      if (!current || candidate.distance < current.distance) nearestPerPillar.set(key, candidate);
+    }
+
+    const maxLabels = Math.max(7, Math.min(view === "side" ? 10 : 18, Math.floor(size.w / 62)));
+    const minSeparation = view === "top" ? 0.48 : view === "tilt" ? 0.58 : 0.72;
+    const ordered = [...nearestPerPillar.values()].sort((a, b) => {
+      const priority = Number(DIVISION_CENTRES.has(b.districtId)) - Number(DIVISION_CENTRES.has(a.districtId));
+      return priority || b.districtLat - a.districtLat || a.districtLng - b.districtLng;
+    });
+    const visible: typeof ordered = [];
+    for (const candidate of ordered) {
+      if (visible.length >= maxLabels) break;
+      const isClear = visible.every((shown) => {
+        const latGap = candidate.districtLat - shown.districtLat;
+        const lngGap = (candidate.districtLng - shown.districtLng) * Math.cos((candidate.districtLat * Math.PI) / 180);
+        return Math.hypot(latGap, lngGap) >= minSeparation;
+      });
+      if (isClear) visible.push(candidate);
+    }
+    return visible;
+  }, [lang, gridPoints, pillarHeight, size.w, view]);
   const regionalLabels = useMemo(
     () =>
       southAsiaLocations.map((item) => ({
@@ -392,6 +438,16 @@ export default function GlobeExplorer({
       />
 
       {hexMode && (
+        <>
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-border bg-card/90 px-2.5 py-2 text-foreground shadow-sm backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-bold text-primary" aria-hidden="true">N ↑</span>
+            <span className="text-[10px] text-muted-foreground">20.5–26.5°N · 88–93°E</span>
+          </div>
+          <p className="mt-0.5 text-[9px] text-muted-foreground">
+            {lang === "bn" ? "পিলার তার নমুনা স্থানাঙ্কেই স্থাপিত" : "Pillars follow their sample coordinates"}
+          </p>
+        </div>
         <div className="absolute right-3 top-3 flex flex-col gap-1.5">
           {([
             ["side", lang === "bn" ? "পাশ থেকে" : "Side view"],
@@ -431,9 +487,10 @@ export default function GlobeExplorer({
             {showNames ? (lang === "bn" ? "নাম লুকান" : "Hide names") : lang === "bn" ? "নাম দেখান" : "Show names"}
           </Button>
           <p className="max-w-[9rem] rounded-md bg-card/80 px-2 py-1 text-[10px] text-muted-foreground">
-            {lang === "bn" ? "টেনে ঘোরান, স্ক্রল করে জুম" : "Drag to orbit, scroll to zoom"}
+            {lang === "bn" ? `${districtLabels.length}টি নাম দেখানো · পিলারে ধরলে পূর্ণ তথ্য` : `${districtLabels.length} labels shown · hover pillars for details`}
           </p>
         </div>
+        </>
       )}
 
       {phase === "world" ? (
