@@ -1,4 +1,6 @@
-# MEC TERRA_DETECTORS — Bangladesh Trend Detective
+# MEC TERRA_DETECTORS
+
+#TERRA BANGLA — Bangladesh Trend Detective
 
 NASA Space Apps Challenge 2026 · Bangladesh · "Be An Earth System Trend Detective!"
 Team: **MEC TERRA_DETECTORS** · License: Apache-2.0
