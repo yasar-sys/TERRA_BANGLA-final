@@ -2,6 +2,8 @@
 
 TERRA BANGLA — Bangladesh Trend Detective
 
+Visit here : https://terrabangla.yasar.earth/
+
 NASA Space Apps Challenge 2026 · Bangladesh · "Be An Earth System Trend Detective!"
 Team: **MEC TERRA_DETECTORS** · License: Apache-2.0
 
