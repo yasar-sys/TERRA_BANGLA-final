@@ -614,15 +614,15 @@ export default function GlobeExplorer({
         ];
         return (
           <>
-            <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[10px] font-semibold tracking-[0.18em] text-foreground shadow-sm [backdrop-filter:blur(18px)]">
+            {phase === "world" && <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[10px] font-semibold tracking-[0.18em] text-foreground shadow-sm [backdrop-filter:blur(18px)]">
               <span className="relative flex h-2 w-2" aria-hidden="true">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-70 motion-safe:animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
               {L("EARTH EXPLORER", "আর্থ এক্সপ্লোরার")}
-            </div>
+            </div>}
             {inspect && (
-              <div className="globe-tooltip absolute right-3 top-12 z-10 w-56 max-w-[calc(100%-1.5rem)]" role="status">
+              <div className="globe-tooltip absolute left-3 top-12 z-10 w-56 max-w-[calc(100%-1.5rem)]" role="status">
                 <div className="flex items-start justify-between gap-2">
                   <strong>{d ? (lang === "bn" ? d.bn : d.name) : L("Inspected point", "নির্বাচিত বিন্দু")}</strong>
                   <button type="button" onClick={() => setInspect(null)} aria-label={L("Close", "বন্ধ করুন")} className="rounded p-0.5 hover:bg-muted">
