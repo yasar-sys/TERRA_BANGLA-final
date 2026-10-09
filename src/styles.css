@@ -261,11 +261,14 @@ a:hover > .site-brand-logo { transform: translateY(-1px) scale(1.03); }
 .theme-toggle::after { content: ""; position: absolute; inset: 28%; border-radius: 50%; background: var(--color-accent); filter: blur(10px); opacity: .15; }
 
 .globe-frame {
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel), 0 0 0 1px color-mix(in oklab,var(--primary) 30%,transparent), 0 0 48px -30px var(--primary-glow);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .globe-frame:fullscreen,
 .globe-frame:-webkit-full-screen {
+  background: var(--color-background);
   height: 100dvh !important;
   width: 100vw !important;
   max-height: none !important;
@@ -274,6 +277,7 @@ a:hover > .site-brand-logo { transform: translateY(-1px) scale(1.03); }
   box-shadow: none;
 }
 .globe-frame-full {
+  background: var(--color-background);
   position: fixed;
   inset: 0;
   z-index: 60;
