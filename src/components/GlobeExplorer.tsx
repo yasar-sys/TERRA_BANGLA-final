@@ -382,11 +382,21 @@ export default function GlobeExplorer({
         width={size.w}
         height={size.h}
         backgroundColor="rgba(0,0,0,0)"
-        globeImageUrl="/textures/earth-blue-marble.jpg"
+        globeImageUrl={night ? "/textures/earth-night.jpg" : "/textures/earth-blue-marble.jpg"}
         bumpImageUrl="/textures/earth-topology.png"
-        atmosphereColor="#2EE6D6"
-        atmosphereAltitude={0.18}
-        showGraticules={phase === "world"}
+        atmosphereColor={night ? theme.primary : theme.accent}
+        atmosphereAltitude={0.17}
+        showGraticules={!hexMode && grid}
+        pointsData={inspect && !hexMode ? [inspect] : EMPTY}
+        pointLat={(d: object) => (d as { lat: number }).lat}
+        pointLng={(d: object) => (d as { lng: number }).lng}
+        pointColor={() => theme.primary}
+        pointAltitude={0.03}
+        pointRadius={phase === "world" ? 0.6 : 0.06}
+        pointLabel={(d: object) => {
+          const p = d as { lat: number; lng: number };
+          return `<div class="globe-tooltip"><strong>${lang === "bn" ? "নির্বাচিত বিন্দু" : "Inspected point"}</strong><br/>${p.lat.toFixed(2)}°, ${p.lng.toFixed(2)}°</div>`;
+        }}
         showAtmosphere
         polygonsData={!hexMode ? features : EMPTY}
         polygonGeoJsonGeometry={(f: object) => (f as Feature).geometry as never}
@@ -416,9 +426,10 @@ export default function GlobeExplorer({
         }
         onPolygonClick={(f: object) => (phase === "world" ? enterBangladesh() : onSelectDistrict((f as Feature).properties.districtId))}
         onGlobeClick={({ lat, lng }: { lat: number; lng: number }) => {
+          if (!hexMode) inspectPoint(lat, lng);
           if (phase === "world" && lat > 20 && lat < 27 && lng > 88 && lng < 93) enterBangladesh();
         }}
-        labelsData={
+        labelsData={(
           phase === "world"
             ? regionalMode
               ? regionalLabels
@@ -426,6 +437,15 @@ export default function GlobeExplorer({
             : hexMode && showNames
               ? districtLabels
               : EMPTY
+        ).length && (hexMode || placeNames) ? (
+          phase === "world"
+            ? regionalMode
+              ? regionalLabels
+              : WORLD_LABELS
+            : hexMode && showNames
+              ? districtLabels
+              : EMPTY
+        ) : EMPTY
         }
         labelLat={(d: object) => (d as { lat: number }).lat}
         labelLng={(d: object) => (d as { lng: number }).lng}
@@ -583,7 +603,7 @@ export default function GlobeExplorer({
         <Button
           type="button"
           onClick={enterBangladesh}
-          className="cta-pulse absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full px-5"
+          className="cta-pulse absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full px-5"
         >
           {t("hero.enter")}
         </Button>
