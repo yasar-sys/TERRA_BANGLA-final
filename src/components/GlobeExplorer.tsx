@@ -11,7 +11,8 @@ import {
 import { normalize, rampColor, spectralColor } from "@/lib/colors";
 import { fmt, useLang } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Vector3 } from "three";
+import { AmbientLight, DirectionalLight, Vector3 } from "three";
+import { Grid3x3, Minus, Moon, Pause, Play, Plus, RotateCcw, Sun, Tag, X } from "lucide-react";
 import { southAsiaLocations } from "@/lib/south-asia";
 
 const BD_CENTER = { lat: 23.75, lng: 90.35 };
@@ -79,6 +80,12 @@ export default function GlobeExplorer({
   const [size, setSize] = useState({ w: 320, h: 420 });
   const [features, setFeatures] = useState<Feature[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [night, setNight] = useState(false);
+  const [rotating, setRotating] = useState(true);
+  const [grid, setGrid] = useState(true);
+  const [placeNames, setPlaceNames] = useState(true);
+  const [inspect, setInspect] = useState<{ lat: number; lng: number; districtId?: string } | null>(null);
+  const [theme, setTheme] = useState({ primary: "rgb(124, 111, 240)", accent: "rgb(46, 230, 214)", dark: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -130,21 +137,100 @@ export default function GlobeExplorer({
     return ms;
   }, []);
 
+  // Fit the whole Earth to the frame: portrait screens need a higher camera.
+  const worldAltitude = useMemo(() => {
+    const aspect = size.w / Math.max(1, size.h);
+    return Math.min(4.6, aspect >= 1 ? 2.3 : 2.3 + (1 - aspect) * 2.2);
+  }, [size]);
+
+  // Theme-synced colours, resolved through a canvas so any CSS colour syntax works.
   useEffect(() => {
-    if (hexMode) return;
-    const controls = globeRef.current?.controls() as
-      | { autoRotate: boolean; autoRotateSpeed: number; enableZoom: boolean }
-      | undefined;
-    if (!controls) return;
-    controls.autoRotate = phase === "world" && !prefersReducedMotion();
-    controls.autoRotateSpeed = 0.35;
-  }, [phase, size, hexMode]);
+    const read = () => {
+      const ctx = document.createElement("canvas").getContext("2d");
+      const css = getComputedStyle(document.documentElement);
+      const resolve = (name: string, fallback: string) => {
+        const raw = css.getPropertyValue(name).trim();
+        if (!ctx || !raw) return fallback;
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = fallback;
+        ctx.fillStyle = raw;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+        return `rgb(${r}, ${g}, ${b})`;
+      };
+      setTheme({
+        primary: resolve("--primary", "#7C6FF0"),
+        accent: resolve("--secondary", "#2EE6D6"),
+        dark: document.documentElement.classList.contains("dark"),
+      });
+    };
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "style"] });
+    return () => mo.disconnect();
+  }, []);
+
+  // Sun + ambient lighting; the sun dims at night so city lights glow.
+  useEffect(() => {
+    const g = globeRef.current as (GlobeMethods & { lights?: (l: object[]) => void }) | undefined;
+    if (!g?.lights) return;
+    const sun = new DirectionalLight(0xffffff, night ? 0.35 : theme.dark ? 2.4 : 2.8);
+    sun.position.set(-100, 180, 300);
+    const ambient = new AmbientLight(0xcfd8ff, night ? 0.55 : theme.dark ? 0.9 : 1.15);
+    g.lights([sun, ambient]);
+  }, [night, theme.dark, size]);
 
   useEffect(() => {
     if (hexMode) return;
-    if (phase === "world") flyTo(20, 60, 2.4);
+    const controls = globeRef.current?.controls() as
+      | {
+          autoRotate: boolean;
+          autoRotateSpeed: number;
+          enableDamping: boolean;
+          dampingFactor: number;
+          minDistance: number;
+          maxDistance: number;
+        }
+      | undefined;
+    if (!controls) return;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    // District view flies to ~124 units, so the 130 floor applies to the world view only.
+    controls.minDistance = phase === "world" ? 130 : 108;
+    controls.maxDistance = 600;
+    controls.autoRotate = phase === "world" && rotating && !prefersReducedMotion();
+    controls.autoRotateSpeed = 0.28;
+  }, [phase, size, hexMode, rotating]);
+
+  useEffect(() => {
+    if (hexMode) return;
+    if (phase === "world") flyTo(20, 60, worldAltitude);
     else flyTo(BD_CENTER.lat, BD_CENTER.lng, 0.24);
-  }, [phase, flyTo, hexMode]);
+  }, [phase, flyTo, hexMode, worldAltitude]);
+
+  const resetView = useCallback(() => {
+    setInspect(null);
+    if (phase === "world") flyTo(20, 60, worldAltitude);
+    else flyTo(BD_CENTER.lat, BD_CENTER.lng, 0.24);
+  }, [phase, flyTo, worldAltitude]);
+
+  const zoomBy = useCallback((factor: number) => {
+    const g = globeRef.current;
+    if (!g) return;
+    const pov = g.pointOfView();
+    const minAlt = phase === "world" ? 0.3 : 0.08;
+    const altitude = Math.min(5, Math.max(minAlt, pov.altitude * factor));
+    g.pointOfView({ ...pov, altitude }, prefersReducedMotion() ? 0 : 450);
+  }, [phase]);
+
+  const inspectPoint = useCallback(
+    (lat: number, lng: number) => {
+      const inBD = lat > 20.4 && lat < 26.8 && lng > 87.9 && lng < 92.8;
+      const d = inBD ? nearestDistrict(lat, lng) : undefined;
+      setInspect({ lat, lng, districtId: d?.id });
+    },
+    [],
+  );
 
   const enterBangladesh = useCallback(() => {
     const ms = flyTo(BD_CENTER.lat, BD_CENTER.lng, 0.24);
