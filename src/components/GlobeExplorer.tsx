@@ -11,7 +11,8 @@ import {
 import { normalize, rampColor, spectralColor } from "@/lib/colors";
 import { fmt, useLang } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Vector3 } from "three";
+import { AmbientLight, DirectionalLight, Vector3 } from "three";
+import { Grid3x3, Minus, Moon, Pause, Play, Plus, RotateCcw, Sun, Tag, X } from "lucide-react";
 import { southAsiaLocations } from "@/lib/south-asia";
 
 const BD_CENTER = { lat: 23.75, lng: 90.35 };
@@ -79,6 +80,12 @@ export default function GlobeExplorer({
   const [size, setSize] = useState({ w: 320, h: 420 });
   const [features, setFeatures] = useState<Feature[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [night, setNight] = useState(false);
+  const [rotating, setRotating] = useState(true);
+  const [grid, setGrid] = useState(true);
+  const [placeNames, setPlaceNames] = useState(true);
+  const [inspect, setInspect] = useState<{ lat: number; lng: number; districtId?: string | undefined } | null>(null);
+  const [theme, setTheme] = useState({ primary: "rgb(124, 111, 240)", accent: "rgb(46, 230, 214)", dark: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -130,21 +137,100 @@ export default function GlobeExplorer({
     return ms;
   }, []);
 
+  // Fit the whole Earth to the frame: portrait screens need a higher camera.
+  const worldAltitude = useMemo(() => {
+    const aspect = size.w / Math.max(1, size.h);
+    return Math.min(4.6, aspect >= 1 ? 2.3 : 2.3 + (1 - aspect) * 2.2);
+  }, [size]);
+
+  // Theme-synced colours, resolved through a canvas so any CSS colour syntax works.
   useEffect(() => {
-    if (hexMode) return;
-    const controls = globeRef.current?.controls() as
-      | { autoRotate: boolean; autoRotateSpeed: number; enableZoom: boolean }
-      | undefined;
-    if (!controls) return;
-    controls.autoRotate = phase === "world" && !prefersReducedMotion();
-    controls.autoRotateSpeed = 0.35;
-  }, [phase, size, hexMode]);
+    const read = () => {
+      const ctx = document.createElement("canvas").getContext("2d");
+      const css = getComputedStyle(document.documentElement);
+      const resolve = (name: string, fallback: string) => {
+        const raw = css.getPropertyValue(name).trim();
+        if (!ctx || !raw) return fallback;
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = fallback;
+        ctx.fillStyle = raw;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+        return `rgb(${r}, ${g}, ${b})`;
+      };
+      setTheme({
+        primary: resolve("--primary", "#7C6FF0"),
+        accent: resolve("--secondary", "#2EE6D6"),
+        dark: document.documentElement.classList.contains("dark"),
+      });
+    };
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme", "style"] });
+    return () => mo.disconnect();
+  }, []);
+
+  // Sun + ambient lighting; the sun dims at night so city lights glow.
+  useEffect(() => {
+    const g = globeRef.current as (GlobeMethods & { lights?: (l: object[]) => void }) | undefined;
+    if (!g?.lights) return;
+    const sun = new DirectionalLight(0xffffff, night ? 0.35 : theme.dark ? 2.4 : 2.8);
+    sun.position.set(-100, 180, 300);
+    const ambient = new AmbientLight(0xcfd8ff, night ? 1.6 : theme.dark ? 0.9 : 1.15);
+    g.lights([sun, ambient]);
+  }, [night, theme.dark, size]);
 
   useEffect(() => {
     if (hexMode) return;
-    if (phase === "world") flyTo(20, 60, 2.4);
+    const controls = globeRef.current?.controls() as
+      | {
+          autoRotate: boolean;
+          autoRotateSpeed: number;
+          enableDamping: boolean;
+          dampingFactor: number;
+          minDistance: number;
+          maxDistance: number;
+        }
+      | undefined;
+    if (!controls) return;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    // District view flies to ~124 units, so the 130 floor applies to the world view only.
+    controls.minDistance = phase === "world" ? 130 : 108;
+    controls.maxDistance = 600;
+    controls.autoRotate = phase === "world" && rotating && !prefersReducedMotion();
+    controls.autoRotateSpeed = 0.28;
+  }, [phase, size, hexMode, rotating]);
+
+  useEffect(() => {
+    if (hexMode) return;
+    if (phase === "world") flyTo(20, 60, worldAltitude);
     else flyTo(BD_CENTER.lat, BD_CENTER.lng, 0.24);
-  }, [phase, flyTo, hexMode]);
+  }, [phase, flyTo, hexMode, worldAltitude]);
+
+  const resetView = useCallback(() => {
+    setInspect(null);
+    if (phase === "world") flyTo(20, 60, worldAltitude);
+    else flyTo(BD_CENTER.lat, BD_CENTER.lng, 0.24);
+  }, [phase, flyTo, worldAltitude]);
+
+  const zoomBy = useCallback((factor: number) => {
+    const g = globeRef.current;
+    if (!g) return;
+    const pov = g.pointOfView();
+    const minAlt = phase === "world" ? 0.3 : 0.08;
+    const altitude = Math.min(5, Math.max(minAlt, pov.altitude * factor));
+    g.pointOfView({ ...pov, altitude }, prefersReducedMotion() ? 0 : 450);
+  }, [phase]);
+
+  const inspectPoint = useCallback(
+    (lat: number, lng: number) => {
+      const inBD = lat > 20.4 && lat < 26.8 && lng > 87.9 && lng < 92.8;
+      const d = inBD ? nearestDistrict(lat, lng) : undefined;
+      setInspect({ lat, lng, districtId: d?.id });
+    },
+    [],
+  );
 
   const enterBangladesh = useCallback(() => {
     const ms = flyTo(BD_CENTER.lat, BD_CENTER.lng, 0.24);
@@ -296,11 +382,21 @@ export default function GlobeExplorer({
         width={size.w}
         height={size.h}
         backgroundColor="rgba(0,0,0,0)"
-        globeImageUrl="/textures/earth-blue-marble.jpg"
+        globeImageUrl={night ? "/textures/earth-night.jpg" : "/textures/earth-blue-marble.jpg"}
         bumpImageUrl="/textures/earth-topology.png"
-        atmosphereColor="#2EE6D6"
-        atmosphereAltitude={0.18}
-        showGraticules={phase === "world"}
+        atmosphereColor={night ? theme.primary : theme.accent}
+        atmosphereAltitude={0.17}
+        showGraticules={!hexMode && grid}
+        pointsData={inspect && !hexMode ? [inspect] : EMPTY}
+        pointLat={(d: object) => (d as { lat: number }).lat}
+        pointLng={(d: object) => (d as { lng: number }).lng}
+        pointColor={() => theme.primary}
+        pointAltitude={0.03}
+        pointRadius={phase === "world" ? 0.6 : 0.06}
+        pointLabel={(d: object) => {
+          const p = d as { lat: number; lng: number };
+          return `<div class="globe-tooltip"><strong>${lang === "bn" ? "নির্বাচিত বিন্দু" : "Inspected point"}</strong><br/>${p.lat.toFixed(2)}°, ${p.lng.toFixed(2)}°</div>`;
+        }}
         showAtmosphere
         polygonsData={!hexMode ? features : EMPTY}
         polygonGeoJsonGeometry={(f: object) => (f as Feature).geometry as never}
@@ -330,9 +426,10 @@ export default function GlobeExplorer({
         }
         onPolygonClick={(f: object) => (phase === "world" ? enterBangladesh() : onSelectDistrict((f as Feature).properties.districtId))}
         onGlobeClick={({ lat, lng }: { lat: number; lng: number }) => {
+          if (!hexMode) inspectPoint(lat, lng);
           if (phase === "world" && lat > 20 && lat < 27 && lng > 88 && lng < 93) enterBangladesh();
         }}
-        labelsData={
+        labelsData={(
           phase === "world"
             ? regionalMode
               ? regionalLabels
@@ -340,6 +437,15 @@ export default function GlobeExplorer({
             : hexMode && showNames
               ? districtLabels
               : EMPTY
+        ).length && (hexMode || placeNames) ? (
+          phase === "world"
+            ? regionalMode
+              ? regionalLabels
+              : WORLD_LABELS
+            : hexMode && showNames
+              ? districtLabels
+              : EMPTY
+        ) : EMPTY
         }
         labelLat={(d: object) => (d as { lat: number }).lat}
         labelLng={(d: object) => (d as { lng: number }).lng}
@@ -493,11 +599,73 @@ export default function GlobeExplorer({
         </>
       )}
 
+      {!hexMode && (() => {
+        const L = (en: string, bn: string) => (lang === "bn" ? bn : en);
+        const d = inspect?.districtId ? districts.find((x) => x.id === inspect.districtId) : undefined;
+        const v = d ? values.get(d.id) : undefined;
+        const tools: { key: string; label: string; icon: React.ReactNode; onClick: () => void; pressed?: boolean }[] = [
+          { key: "reset", label: L("Reset view", "ভিউ রিসেট"), icon: <RotateCcw />, onClick: resetView },
+          { key: "in", label: L("Zoom in", "জুম ইন"), icon: <Plus />, onClick: () => zoomBy(0.75) },
+          { key: "out", label: L("Zoom out", "জুম আউট"), icon: <Minus />, onClick: () => zoomBy(1.33) },
+          { key: "spin", label: rotating ? L("Pause rotation", "ঘোরা থামান") : L("Play rotation", "ঘোরান"), icon: rotating ? <Pause /> : <Play />, onClick: () => setRotating((r) => !r), pressed: rotating },
+          { key: "night", label: night ? L("Daylight view", "দিনের দৃশ্য") : L("City lights view", "রাতের শহরের আলো"), icon: night ? <Sun /> : <Moon />, onClick: () => setNight((n) => !n), pressed: night },
+          { key: "grid", label: L("Coordinate grid", "স্থানাঙ্ক গ্রিড"), icon: <Grid3x3 />, onClick: () => setGrid((g) => !g), pressed: grid },
+          { key: "names", label: L("Place names", "স্থানের নাম"), icon: <Tag />, onClick: () => setPlaceNames((n) => !n), pressed: placeNames },
+        ];
+        return (
+          <>
+            {phase === "world" && <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[10px] font-semibold tracking-[0.18em] text-foreground shadow-sm [backdrop-filter:blur(18px)]">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-70 motion-safe:animate-ping" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              {L("EARTH EXPLORER", "আর্থ এক্সপ্লোরার")}
+            </div>}
+            {inspect && (
+              <div className="globe-tooltip absolute left-3 top-12 z-10 w-56 max-w-[calc(100%-1.5rem)]" role="status">
+                <div className="flex items-start justify-between gap-2">
+                  <strong>{d ? (lang === "bn" ? d.bn : d.name) : L("Inspected point", "নির্বাচিত বিন্দু")}</strong>
+                  <button type="button" onClick={() => setInspect(null)} aria-label={L("Close", "বন্ধ করুন")} className="rounded p-0.5 hover:bg-muted">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-muted-foreground">{inspect.lat.toFixed(2)}°{inspect.lat >= 0 ? "N" : "S"} · {inspect.lng.toFixed(2)}°{inspect.lng >= 0 ? "E" : "W"}</div>
+                <div className="mt-1">
+                  {d && v !== undefined
+                    ? <>{t(VARIABLE_LABEL_KEY[variable])}: <strong>{fmt(v, lang, 2)}</strong> <span className="text-muted-foreground">· NASA</span></>
+                    : t("district.nodata")}
+                </div>
+                {d && (
+                  <button type="button" onClick={() => onSelectDistrict(d.id)} className="mt-1 font-semibold text-primary underline-offset-2 hover:underline">
+                    {L("Open district →", "জেলা খুলুন →")}
+                  </button>
+                )}
+              </div>
+            )}
+            <div role="toolbar" aria-label={L("Globe controls", "গ্লোব নিয়ন্ত্রণ")} className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-card/55 p-1 shadow-lg [backdrop-filter:blur(18px)] sm:gap-1 sm:p-1.5">
+              {tools.map((tool) => (
+                <button
+                  key={tool.key}
+                  type="button"
+                  title={tool.label}
+                  aria-label={tool.label}
+                  aria-pressed={tool.pressed}
+                  onClick={tool.onClick}
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-4 [&_svg]:w-4 ${tool.pressed ? "bg-primary/20 text-primary shadow-[0_0_12px_-2px_var(--primary)]" : ""}`}
+                >
+                  {tool.icon}
+                </button>
+              ))}
+            </div>
+          </>
+        );
+      })()}
+
       {phase === "world" ? (
         <Button
           type="button"
           onClick={enterBangladesh}
-          className="cta-pulse absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full px-5"
+          className="cta-pulse absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full px-5"
         >
           {t("hero.enter")}
         </Button>
