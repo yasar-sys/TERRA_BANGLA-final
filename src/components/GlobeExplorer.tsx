@@ -84,7 +84,7 @@ export default function GlobeExplorer({
   const [rotating, setRotating] = useState(true);
   const [grid, setGrid] = useState(true);
   const [placeNames, setPlaceNames] = useState(true);
-  const [inspect, setInspect] = useState<{ lat: number; lng: number; districtId?: string } | null>(null);
+  const [inspect, setInspect] = useState<{ lat: number; lng: number; districtId?: string | undefined } | null>(null);
   const [theme, setTheme] = useState({ primary: "rgb(124, 111, 240)", accent: "rgb(46, 230, 214)", dark: true });
 
   useEffect(() => {
