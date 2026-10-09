@@ -599,6 +599,68 @@ export default function GlobeExplorer({
         </>
       )}
 
+      {!hexMode && (() => {
+        const L = (en: string, bn: string) => (lang === "bn" ? bn : en);
+        const d = inspect?.districtId ? districts.find((x) => x.id === inspect.districtId) : undefined;
+        const v = d ? values.get(d.id) : undefined;
+        const tools: { key: string; label: string; icon: React.ReactNode; onClick: () => void; pressed?: boolean }[] = [
+          { key: "reset", label: L("Reset view", "ভিউ রিসেট"), icon: <RotateCcw />, onClick: resetView },
+          { key: "in", label: L("Zoom in", "জুম ইন"), icon: <Plus />, onClick: () => zoomBy(0.75) },
+          { key: "out", label: L("Zoom out", "জুম আউট"), icon: <Minus />, onClick: () => zoomBy(1.33) },
+          { key: "spin", label: rotating ? L("Pause rotation", "ঘোরা থামান") : L("Play rotation", "ঘোরান"), icon: rotating ? <Pause /> : <Play />, onClick: () => setRotating((r) => !r), pressed: rotating },
+          { key: "night", label: night ? L("Daylight view", "দিনের দৃশ্য") : L("City lights view", "রাতের শহরের আলো"), icon: night ? <Sun /> : <Moon />, onClick: () => setNight((n) => !n), pressed: night },
+          { key: "grid", label: L("Coordinate grid", "স্থানাঙ্ক গ্রিড"), icon: <Grid3x3 />, onClick: () => setGrid((g) => !g), pressed: grid },
+          { key: "names", label: L("Place names", "স্থানের নাম"), icon: <Tag />, onClick: () => setPlaceNames((n) => !n), pressed: placeNames },
+        ];
+        return (
+          <>
+            <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[10px] font-semibold tracking-[0.18em] text-foreground shadow-sm [backdrop-filter:blur(18px)]">
+              <span className="relative flex h-2 w-2" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-70 motion-safe:animate-ping" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              {L("EARTH EXPLORER", "আর্থ এক্সপ্লোরার")}
+            </div>
+            {inspect && (
+              <div className="globe-tooltip absolute right-3 top-12 z-10 w-56 max-w-[calc(100%-1.5rem)]" role="status">
+                <div className="flex items-start justify-between gap-2">
+                  <strong>{d ? (lang === "bn" ? d.bn : d.name) : L("Inspected point", "নির্বাচিত বিন্দু")}</strong>
+                  <button type="button" onClick={() => setInspect(null)} aria-label={L("Close", "বন্ধ করুন")} className="rounded p-0.5 hover:bg-muted">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-muted-foreground">{inspect.lat.toFixed(2)}°{inspect.lat >= 0 ? "N" : "S"} · {inspect.lng.toFixed(2)}°{inspect.lng >= 0 ? "E" : "W"}</div>
+                <div className="mt-1">
+                  {d && v !== undefined
+                    ? <>{t(VARIABLE_LABEL_KEY[variable])}: <strong>{fmt(v, lang, 2)}</strong> <span className="text-muted-foreground">· NASA</span></>
+                    : t("district.nodata")}
+                </div>
+                {d && (
+                  <button type="button" onClick={() => onSelectDistrict(d.id)} className="mt-1 font-semibold text-primary underline-offset-2 hover:underline">
+                    {L("Open district →", "জেলা খুলুন →")}
+                  </button>
+                )}
+              </div>
+            )}
+            <div role="toolbar" aria-label={L("Globe controls", "গ্লোব নিয়ন্ত্রণ")} className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-card/55 p-1 shadow-lg [backdrop-filter:blur(18px)] sm:gap-1 sm:p-1.5">
+              {tools.map((tool) => (
+                <button
+                  key={tool.key}
+                  type="button"
+                  title={tool.label}
+                  aria-label={tool.label}
+                  aria-pressed={tool.pressed}
+                  onClick={tool.onClick}
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-4 [&_svg]:w-4 ${tool.pressed ? "bg-primary/20 text-primary shadow-[0_0_12px_-2px_var(--primary)]" : ""}`}
+                >
+                  {tool.icon}
+                </button>
+              ))}
+            </div>
+          </>
+        );
+      })()}
+
       {phase === "world" ? (
         <Button
           type="button"
