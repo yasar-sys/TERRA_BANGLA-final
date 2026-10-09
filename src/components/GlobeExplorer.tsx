@@ -176,7 +176,7 @@ export default function GlobeExplorer({
     if (!g?.lights) return;
     const sun = new DirectionalLight(0xffffff, night ? 0.35 : theme.dark ? 2.4 : 2.8);
     sun.position.set(-100, 180, 300);
-    const ambient = new AmbientLight(0xcfd8ff, night ? 0.55 : theme.dark ? 0.9 : 1.15);
+    const ambient = new AmbientLight(0xcfd8ff, night ? 1.6 : theme.dark ? 0.9 : 1.15);
     g.lights([sun, ambient]);
   }, [night, theme.dark, size]);
 
