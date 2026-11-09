@@ -406,6 +406,7 @@ export default function GlobeExplorer({
         polygonAltitude={polygonAltitude}
         polygonCapCurvatureResolution={10}
         polygonsTransitionDuration={0}
+        labelsTransitionDuration={0}
         polygonLabel={(f: object) => {
           if (phase === "world") return `<div class="globe-tooltip globe-tooltip-active"><strong>${lang === "bn" ? "বাংলাদেশ — ক্লিক করুন" : "Bangladesh — click to enter"}</strong></div>`;
           const id = (f as Feature).properties.districtId;
