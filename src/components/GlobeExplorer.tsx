@@ -332,6 +332,11 @@ export default function GlobeExplorer({
     [lang],
   );
 
+  const activeLabels = useMemo(() => {
+    if (phase === "world") return placeNames ? (regionalMode ? regionalLabels : WORLD_LABELS) : EMPTY;
+    return hexMode && showNames ? districtLabels : EMPTY;
+  }, [phase, placeNames, regionalMode, regionalLabels, hexMode, showNames, districtLabels]);
+
   // Aim at Bangladesh instead of the globe's centre so low camera angles keep the data in frame.
   useEffect(() => {
     if (!hexMode) return;
@@ -406,6 +411,7 @@ export default function GlobeExplorer({
         polygonAltitude={polygonAltitude}
         polygonCapCurvatureResolution={10}
         polygonsTransitionDuration={0}
+        labelsTransitionDuration={0}
         polygonLabel={(f: object) => {
           if (phase === "world") return `<div class="globe-tooltip globe-tooltip-active"><strong>${lang === "bn" ? "বাংলাদেশ — ক্লিক করুন" : "Bangladesh — click to enter"}</strong></div>`;
           const id = (f as Feature).properties.districtId;
@@ -429,24 +435,7 @@ export default function GlobeExplorer({
           if (!hexMode) inspectPoint(lat, lng);
           if (phase === "world" && lat > 20 && lat < 27 && lng > 88 && lng < 93) enterBangladesh();
         }}
-        labelsData={(
-          phase === "world"
-            ? regionalMode
-              ? regionalLabels
-              : WORLD_LABELS
-            : hexMode && showNames
-              ? districtLabels
-              : EMPTY
-        ).length && (hexMode || placeNames) ? (
-          phase === "world"
-            ? regionalMode
-              ? regionalLabels
-              : WORLD_LABELS
-            : hexMode && showNames
-              ? districtLabels
-              : EMPTY
-        ) : EMPTY
-        }
+        labelsData={activeLabels}
         labelLat={(d: object) => (d as { lat: number }).lat}
         labelLng={(d: object) => (d as { lng: number }).lng}
         labelText={(d: object) => (d as { text: string }).text}
